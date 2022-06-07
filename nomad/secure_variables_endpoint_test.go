@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/nomad/acl"
 	"github.com/hashicorp/nomad/ci"
 	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/hashicorp/nomad/nomad/structs"
@@ -48,6 +49,20 @@ func TestSecureVariablesEndpoint_auth(t *testing.T) {
 	})
 	idTokenParts[2] = strings.Join(sig, "")
 	invalidIDToken := strings.Join(idTokenParts, ".")
+
+	policy := mock.ACLPolicy()
+	policy.Rules = `namespace "nondefault-namespace" {
+		secure_variables {
+		    path "jobs/*" { capabilities = ["read"] }
+		}}`
+	policy.SetHash()
+	err = store.UpsertACLPolicies(structs.MsgTypeTestSetup, 1100, []*structs.ACLPolicy{policy})
+	require.NoError(t, err)
+
+	aclToken := mock.ACLToken()
+	aclToken.Policies = []string{policy.Name}
+	err = store.UpsertACLTokens(structs.MsgTypeTestSetup, 1150, []*structs.ACLToken{aclToken})
+	require.NoError(t, err)
 
 	t.Run("terminal alloc should be denied", func(t *testing.T) {
 		err = srv.staticEndpoints.SecureVariables.handleMixedAuthEndpoint(
@@ -127,6 +142,19 @@ func TestSecureVariablesEndpoint_auth(t *testing.T) {
 			name:        "invalid signature is denied",
 			token:       invalidIDToken,
 			cap:         "n/a",
+			path:        fmt.Sprintf("jobs/%s/web/web", jobID),
+			expectedErr: structs.ErrPermissionDenied,
+		},
+		{
+			name:  "acl token read policy is allowed to list",
+			token: aclToken.SecretID,
+			cap:   acl.PolicyList,
+			path:  fmt.Sprintf("jobs/%s/web/web", jobID),
+		},
+		{
+			name:        "acl token read policy is not allowed to write",
+			token:       aclToken.SecretID,
+			cap:         acl.PolicyWrite,
 			path:        fmt.Sprintf("jobs/%s/web/web", jobID),
 			expectedErr: structs.ErrPermissionDenied,
 		},

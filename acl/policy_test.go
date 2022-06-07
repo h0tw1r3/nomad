@@ -55,6 +55,19 @@ func TestParse(t *testing.T) {
 			namespace "secret" {
 				capabilities = ["deny", "read-logs"]
 			}
+			namespace "apps" {
+				secure_variables {
+					path "jobs/write-does-not-imply-read" {
+						capabilities = ["write"]
+					}
+					path "project/read-implies-list" {
+						capabilities = ["read"]
+					}
+					path "project/explicit" {
+						capabilities = ["read", "list"]
+					}
+				}
+			}
 			namespace "autoscaler" {
 				policy = "scale"
 			}
@@ -120,6 +133,25 @@ func TestParse(t *testing.T) {
 						Capabilities: []string{
 							NamespaceCapabilityDeny,
 							NamespaceCapabilityReadLogs,
+						},
+					},
+					{
+						Name: "apps",
+						SecureVariables: &SecureVariablesPolicy{
+							Paths: []*SecureVariablesPathPolicy{
+								{
+									PathSpec:     "jobs/write-does-not-imply-read",
+									Capabilities: []string{PolicyWrite},
+								},
+								{
+									PathSpec:     "project/read-implies-list",
+									Capabilities: []string{PolicyRead, PolicyList},
+								},
+								{
+									PathSpec:     "project/explicit",
+									Capabilities: []string{PolicyRead, PolicyList},
+								},
+							},
 						},
 					},
 					{

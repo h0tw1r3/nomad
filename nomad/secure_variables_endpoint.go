@@ -41,9 +41,11 @@ func (sv *SecureVariables) Upsert(
 	if aclObj, err := sv.srv.ResolveToken(args.AuthToken); err != nil {
 		return err
 	} else if aclObj != nil {
-		// FIXME: Temporary ACL Test policy. Update once implementation complete
-		if !aclObj.AllowNsOp(args.RequestNamespace(), acl.NamespaceCapabilitySubmitJob) {
-			return structs.ErrPermissionDenied
+		for _, variable := range args.Data {
+			if !aclObj.AllowSecureVariableOperation(args.RequestNamespace(),
+				variable.Path, acl.PolicyWrite) {
+				return structs.ErrPermissionDenied
+			}
 		}
 	}
 
@@ -100,8 +102,7 @@ func (sv *SecureVariables) Delete(
 	if aclObj, err := sv.srv.ResolveToken(args.AuthToken); err != nil {
 		return err
 	} else if aclObj != nil {
-		// FIXME: Temporary ACL Test policy. Update once implementation complete
-		if !aclObj.AllowNsOp(args.RequestNamespace(), acl.NamespaceCapabilitySubmitJob) {
+		if !aclObj.AllowSecureVariableOperation(args.RequestNamespace(), args.Path, acl.PolicyWrite) {
 			return structs.ErrPermissionDenied
 		}
 	}
@@ -132,7 +133,7 @@ func (sv *SecureVariables) Read(args *structs.SecureVariablesReadRequest, reply 
 
 	// FIXME: Temporary ACL Test policy. Update once implementation complete
 	err := sv.handleMixedAuthEndpoint(args.QueryOptions,
-		acl.NamespaceCapabilitySubmitJob, args.Path)
+		acl.PolicyRead, args.Path)
 	if err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func (sv *SecureVariables) List(
 
 	// FIXME: Temporary ACL Test policy. Update once implementation complete
 	err := sv.handleMixedAuthEndpoint(args.QueryOptions,
-		acl.NamespaceCapabilitySubmitJob, args.Prefix)
+		acl.PolicyList, args.Prefix)
 	if err != nil {
 		return err
 	}
@@ -264,8 +265,7 @@ func (s *SecureVariables) listAllSecureVariables(
 	// allowFunc checks whether the caller has the read-job capability on the
 	// passed namespace.
 	allowFunc := func(ns string) bool {
-		// FIXME: Temporary ACL Test policy. Update once implementation complete
-		return aclObj.AllowNsOp(ns, acl.NamespaceCapabilityReadJob)
+		return aclObj.AllowSecureVariableOperation(ns, "", acl.PolicyList)
 	}
 
 	// Set up and return the blocking query.
@@ -379,7 +379,7 @@ func (sv *SecureVariables) handleMixedAuthEndpoint(args structs.QueryOptions, ca
 		// Perform our ACL validation. If the object is nil, this means ACLs
 		// are not enabled, otherwise trigger the allowed namespace function.
 		if aclObj != nil {
-			if !aclObj.AllowNsOp(args.RequestNamespace(), cap) {
+			if !aclObj.AllowSecureVariableOperation(args.RequestNamespace(), pathOrPrefix, cap) {
 				return structs.ErrPermissionDenied
 			}
 		}
